@@ -12,6 +12,30 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Find and prepare project
+        id: locate
+        run: |
+          if [ ! -f settings.gradle ]; then
+            for z in *.zip; do
+              if [ -f "$z" ]; then unzip -o -q "$z" -d _unzipped; fi
+            done
+          fi
+          SETTINGS=$(find . -name settings.gradle -not -path './.git/*' | sed -n '1p')
+          if [ -z "$SETTINGS" ]; then
+            echo "::error::No settings.gradle found. Files in repo:"
+            find . -not -path './.git/*' -type f | sed -n '1,50p'
+            exit 1
+          fi
+          DIR=$(dirname "$SETTINGS")
+          cd "$DIR"
+          if [ ! -d src ]; then
+            mkdir -p src/main/java/com/example/deathchat/mixin src/main/resources
+            mv DeathScreenMixin.java src/main/java/com/example/deathchat/mixin/
+            mv fabric.mod.json deathchat.mixins.json src/main/resources/
+          fi
+          sed -i '/Flat layout/,$d' build.gradle
+          echo "dir=$DIR" >> "$GITHUB_OUTPUT"
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -22,9 +46,10 @@ jobs:
           gradle-version: current
 
       - name: Build
+        working-directory: ${{ steps.locate.outputs.dir }}
         run: gradle build --no-daemon
 
       - uses: actions/upload-artifact@v4
         with:
           name: deathchat
-          path: build/libs/*.jar
+          path: ${{ steps.locate.outputs.dir }}/build/libs/*.jar
